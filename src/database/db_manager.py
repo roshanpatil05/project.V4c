@@ -52,14 +52,18 @@ class DatabaseConnection:
 		with self._connection_lock:
 			try:
 				if not self._is_alive():
-					self._connection = pymysql.connect(
-						host=settings.host,
-						port=settings.port,
-						user=settings.user,
-						password=settings.password,
-						database=settings.database,
-						cursorclass=pymysql.cursors.DictCursor,
-					)
+					connect_kwargs = {
+						"host": settings.host,
+						"port": settings.port,
+						"user": settings.user,
+						"password": settings.password,
+						"database": settings.database,
+						"cursorclass": pymysql.cursors.DictCursor,
+					}
+					if getattr(settings, "ssl_mode", "") or "aivencloud.com" in settings.host:
+						ssl_mode = getattr(settings, "ssl_mode", "") or "REQUIRED"
+						connect_kwargs["ssl"] = {"ssl_mode": ssl_mode}
+					self._connection = pymysql.connect(**connect_kwargs)
 				return self._connection
 			except MySQLError as exc:
 				logger.error("Failed to connect to MySQL database: %s", exc, exc_info=True)

@@ -31,6 +31,7 @@ class DatabaseSettings:
     database: str = _get_secret(
         "DB_NAME", "employee_analytics"
     )
+    ssl_mode: str = _get_secret("DB_SSL_MODE", "")
 
 
 settings = DatabaseSettings()
