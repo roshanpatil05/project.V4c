@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 import logging
 from typing import Any
 
@@ -58,7 +58,7 @@ class EmployeeManager(DatabaseConnection):
                     employee.employee_id, employee.first_name, employee.last_name, employee.email,
                     department["department_key"], employee.job_title, employee.hire_date or date.today(),
                     employee.salary, datetime.now(),
-                ),
+                )
             )
             connection.commit()
             return employee.employee_id
@@ -83,6 +83,18 @@ class EmployeeManager(DatabaseConnection):
             raise ValidationError("Department ID must be a positive integer.")
         self._apply_scd2_change(employee_id, department_id=new_department_id)
 
+    def update_job_title(self, employee_id: int, new_job_title: str) -> None:
+        if not new_job_title or not new_job_title.strip():
+            raise ValidationError("Job title cannot be empty.")
+        self._apply_scd2_change(employee_id, job_title=new_job_title.strip())
+
+    def update_department_and_role(self, employee_id: int, new_department_id: int, new_job_title: str) -> None:
+        if new_department_id < 1:
+            raise ValidationError("Department ID must be a positive integer.")
+        if not new_job_title or not new_job_title.strip():
+            raise ValidationError("Job title cannot be empty.")
+        self._apply_scd2_change(employee_id, department_id=new_department_id, job_title=new_job_title.strip())
+
     def update_salary(self, employee_id: int, new_salary: float) -> None:
         if new_salary <= 0:
             raise ValidationError("Salary must be greater than zero.")
@@ -92,13 +104,13 @@ class EmployeeManager(DatabaseConnection):
         self,
         employee_id: int,
         department_id: int | None = None,
+        job_title: str | None = None,
         salary: float | None = None,
     ) -> None:
         if employee_id < 1:
             raise ValidationError("Employee ID must be a positive integer.")
         connection = self.get_connection()
         cursor = connection.cursor()
-        effective_time = datetime.now()
         try:
             cursor.execute(
                 "SELECT * FROM employees WHERE employee_id = %s FOR UPDATE",
@@ -110,6 +122,7 @@ class EmployeeManager(DatabaseConnection):
             if employee["status"] != "active":
                 raise ValidationError(f"Employee {employee_id} is inactive and cannot be updated.")
             next_department_id = department_id if department_id is not None else employee["department_id"]
+            next_job_title = job_title.strip() if job_title is not None else employee["job_title"]
             next_salary = salary if salary is not None else employee["salary"]
             cursor.execute(
                 "SELECT department_key FROM dim_department WHERE department_id = %s",
@@ -127,17 +140,31 @@ class EmployeeManager(DatabaseConnection):
                 raise ValidationError(f"Current warehouse version for employee {employee_id} is missing.")
             if (
                 current["department_key"] == department["department_key"]
+                and current.get("job_title") == next_job_title
                 and float(current["salary"]) == float(next_salary)
             ):
                 connection.rollback()
                 return
+
+            now = datetime.now()
+            curr_start = current.get("start_date")
+            if curr_start is not None:
+                if isinstance(curr_start, date) and not isinstance(curr_start, datetime):
+                    curr_start = datetime.combine(curr_start, datetime.min.time())
+                if now <= curr_start:
+                    effective_time = curr_start + timedelta(seconds=1)
+                else:
+                    effective_time = now
+            else:
+                effective_time = now
+
             cursor.execute(
                 "UPDATE dim_employee SET end_date = %s, is_current = FALSE WHERE employee_key = %s",
                 (effective_time, current["employee_key"]),
             )
             cursor.execute(
-                "UPDATE employees SET department_id = %s, salary = %s WHERE employee_id = %s",
-                (next_department_id, next_salary, employee_id),
+                "UPDATE employees SET department_id = %s, job_title = %s, salary = %s WHERE employee_id = %s",
+                (next_department_id, next_job_title, next_salary, employee_id),
             )
             cursor.execute(
                 """INSERT INTO dim_employee
@@ -146,7 +173,7 @@ class EmployeeManager(DatabaseConnection):
                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, NULL, TRUE, 0)""",
                 (
                     employee_id, employee["first_name"], employee["last_name"], employee["email"],
-                    department["department_key"], current["job_title"], employee["hire_date"],
+                    department["department_key"], next_job_title, employee["hire_date"],
                     next_salary, effective_time,
                 ),
             )
@@ -248,6 +275,51 @@ class EmployeeManager(DatabaseConnection):
         finally:
             cursor.close()
 
+    def get_employees_export(
+        self,
+        department_id: int | None = None,
+        include_salary: bool = False,
+    ) -> list[dict[str, Any]]:
+        """Return workforce roster formatted for CSV export, respecting salary visibility."""
+        if include_salary:
+            query = """
+                SELECT 
+                    e.employee_id,
+                    e.first_name,
+                    e.last_name,
+                    e.email,
+                    COALESCE(d.department_name, 'Unassigned') AS department,
+                    e.job_title,
+                    e.hire_date,
+                    e.salary,
+                    e.performance_score,
+                    e.attrition_risk,
+                    e.status
+                FROM employees e
+                LEFT JOIN departments d ON d.department_id = e.department_id
+                WHERE (%s IS NULL OR e.department_id = %s)
+                ORDER BY e.employee_id ASC
+            """
+        else:
+            query = """
+                SELECT 
+                    e.employee_id,
+                    e.first_name,
+                    e.last_name,
+                    e.email,
+                    COALESCE(d.department_name, 'Unassigned') AS department,
+                    e.job_title,
+                    e.hire_date,
+                    e.performance_score,
+                    e.attrition_risk,
+                    e.status
+                FROM employees e
+                LEFT JOIN departments d ON d.department_id = e.department_id
+                WHERE (%s IS NULL OR e.department_id = %s)
+                ORDER BY e.employee_id ASC
+            """
+        return self.fetch_all(query, (department_id, department_id))
+
 
 class ProjectManager(DatabaseConnection):
     def create_project(self, project: Project) -> int:
@@ -320,6 +392,24 @@ class ProjectManager(DatabaseConnection):
         )
         cursor.close()
 
+    def get_employee_assignments(self, employee_id: int) -> list[dict[str, Any]]:
+        """Return all project assignments for an employee with project and department details."""
+        if employee_id < 1:
+            raise ValidationError("Employee ID must be a positive integer.")
+        return self.fetch_all(
+            """
+            SELECT pa.assignment_id, pa.project_id, p.project_name, d.department_name,
+                   p.status, p.budget, pa.allocation_pct, pa.assigned_date,
+                   p.start_date, p.end_date
+            FROM project_assignments pa
+            JOIN projects p ON p.project_id = pa.project_id
+            LEFT JOIN departments d ON d.department_id = p.department_id
+            WHERE pa.employee_id = %s
+            ORDER BY pa.assigned_date DESC, pa.assignment_id DESC
+            """,
+            (employee_id,),
+        )
+
     def get_project(self, project_id: int) -> dict[str, Any] | None:
         if project_id < 1:
             raise ValidationError("Project ID must be a positive integer.")
@@ -370,6 +460,67 @@ class ProjectManager(DatabaseConnection):
         cursor = self.execute("DELETE FROM projects WHERE project_id = %s", (project_id,), commit=True)
         cursor.close()
 
+    def get_projects_timeline(
+        self,
+        department_id: int | None = None,
+        limit: int = 300,
+    ) -> list[dict[str, Any]]:
+        """Return projects with schedule dates and dynamic staffing burn-down metrics."""
+        query = """
+            SELECT 
+                p.project_id,
+                p.project_name,
+                p.department_id,
+                COALESCE(d.department_name, 'Unassigned') AS department_name,
+                p.status,
+                p.budget,
+                p.start_date,
+                p.end_date,
+                COUNT(DISTINCT pa.employee_id) AS staff_count,
+                COALESCE(SUM(pa.allocation_pct), 0) AS total_allocation_pct,
+                COALESCE(SUM(e.salary * (pa.allocation_pct / 100.0)), 0) AS annual_staffing_burn,
+                COALESCE(SUM(e.salary * (pa.allocation_pct / 100.0)) / 12.0, 0) AS monthly_staffing_burn
+            FROM projects p
+            LEFT JOIN departments d ON d.department_id = p.department_id
+            LEFT JOIN project_assignments pa ON pa.project_id = p.project_id
+            LEFT JOIN employees e ON e.employee_id = pa.employee_id AND e.status = 'active'
+            WHERE (%s IS NULL OR p.department_id = %s)
+            GROUP BY p.project_id, p.project_name, p.department_id, d.department_name, p.status, p.budget, p.start_date, p.end_date
+            ORDER BY p.start_date ASC, p.project_id ASC
+            LIMIT %s
+        """
+        return self.fetch_all(query, (department_id, department_id, limit))
+
+    def get_staffing_allocation_matrix(
+        self,
+        department_id: int | None = None,
+    ) -> list[dict[str, Any]]:
+        """Return project-to-employee staffing allocation matrix for export."""
+        query = """
+            SELECT 
+                p.project_id,
+                p.project_name,
+                COALESCE(d.department_name, 'Unassigned') AS project_department,
+                p.status AS project_status,
+                p.budget AS project_budget,
+                p.start_date,
+                p.end_date,
+                e.employee_id,
+                CONCAT(e.first_name, ' ', e.last_name) AS employee_name,
+                COALESCE(ed.department_name, 'Unassigned') AS employee_department,
+                e.job_title,
+                pa.allocation_pct,
+                pa.assigned_date
+            FROM project_assignments pa
+            JOIN projects p ON p.project_id = pa.project_id
+            LEFT JOIN departments d ON d.department_id = p.department_id
+            JOIN employees e ON e.employee_id = pa.employee_id
+            LEFT JOIN departments ed ON ed.department_id = e.department_id
+            WHERE (%s IS NULL OR p.department_id = %s)
+            ORDER BY p.project_name, e.last_name
+        """
+        return self.fetch_all(query, (department_id, department_id))
+
 
 class ReviewManager(DatabaseConnection):
     def create_review(self, review: Review) -> int:
@@ -395,6 +546,23 @@ class ReviewManager(DatabaseConnection):
             return int(cursor.lastrowid)
         finally:
             cursor.close()
+
+    def get_employee_reviews(self, employee_id: int) -> list[dict[str, Any]]:
+        """Return all performance reviews for a specific employee ordered latest first."""
+        if employee_id < 1:
+            raise ValidationError("Employee ID must be a positive integer.")
+        return self.fetch_all(
+            """
+            SELECT r.review_id, r.employee_id, r.review_date, r.overall_score,
+                   r.rating, r.comments, r.manager_id,
+                   m.first_name AS mgr_first, m.last_name AS mgr_last, m.job_title AS mgr_title
+            FROM performance_reviews r
+            LEFT JOIN employees m ON m.employee_id = r.manager_id
+            WHERE r.employee_id = %s
+            ORDER BY r.review_date DESC, r.review_id DESC
+            """,
+            (employee_id,),
+        )
 
     def get_review(self, review_id: int) -> dict[str, Any] | None:
         if review_id < 1:
@@ -432,6 +600,32 @@ class ReviewManager(DatabaseConnection):
             commit=True,
         )
         cursor.close()
+
+    def get_reviews_export(
+        self,
+        department_id: int | None = None,
+    ) -> list[dict[str, Any]]:
+        """Return performance review history for export."""
+        query = """
+            SELECT 
+                r.review_id,
+                r.employee_id,
+                CONCAT(e.first_name, ' ', e.last_name) AS employee_name,
+                COALESCE(d.department_name, 'Unassigned') AS department,
+                e.job_title,
+                r.review_date,
+                r.overall_score,
+                r.rating,
+                CONCAT(COALESCE(m.first_name, ''), ' ', COALESCE(m.last_name, '')) AS manager_name,
+                r.comments
+            FROM performance_reviews r
+            JOIN employees e ON e.employee_id = r.employee_id
+            LEFT JOIN departments d ON d.department_id = e.department_id
+            LEFT JOIN employees m ON m.employee_id = r.manager_id
+            WHERE (%s IS NULL OR e.department_id = %s)
+            ORDER BY r.review_date DESC, r.review_id DESC
+        """
+        return self.fetch_all(query, (department_id, department_id))
 
 
 class AnalyticsManager(DatabaseConnection):

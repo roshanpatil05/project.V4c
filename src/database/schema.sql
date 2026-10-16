@@ -121,6 +121,102 @@ CREATE TABLE IF NOT EXISTS fact_performance_reviews (
     INDEX ix_fact_employee_id (employee_id)
 );
 
+-- ============================================================
+-- AUTH: user accounts, role rules, and audit log
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS user_accounts (
+    account_id    BIGINT AUTO_INCREMENT PRIMARY KEY,
+    employee_id   BIGINT NOT NULL UNIQUE,
+    password_hash VARCHAR(255) NOT NULL,
+    is_active     BOOLEAN NOT NULL DEFAULT TRUE,
+    -- When set, overrides role_rules resolution entirely.
+    -- Only assignable via CLI (setup_auth.py); never from the UI.
+    forced_role   VARCHAR(60) NULL DEFAULT NULL,
+    last_login    DATETIME NULL,
+    created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_account_employee FOREIGN KEY (employee_id) REFERENCES employees(employee_id)
+);
+
+-- Maps job-title patterns (LIKE syntax) to app user-roles.
+-- priority: lower number = checked first (more specific rules win).
+-- department_id NULL means "any department".
+CREATE TABLE IF NOT EXISTS role_rules (
+    rule_id       INT AUTO_INCREMENT PRIMARY KEY,
+    title_pattern VARCHAR(120) NOT NULL,
+    department_id INT NULL,
+    role_name     VARCHAR(60)  NOT NULL,
+    priority      INT          NOT NULL DEFAULT 10,
+    CONSTRAINT fk_role_rule_department FOREIGN KEY (department_id) REFERENCES departments(department_id)
+);
+
+CREATE TABLE IF NOT EXISTS auth_audit_log (
+    log_id       BIGINT AUTO_INCREMENT PRIMARY KEY,
+    employee_id  BIGINT NULL,
+    event_type   ENUM('login_success','login_failed','logout','action') NOT NULL,
+    description  VARCHAR(500) NULL,
+    created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX ix_audit_employee (employee_id),
+    INDEX ix_audit_created  (created_at)
+);
+
+-- ============================================================
+-- ROLE RULES SEED DATA
+-- Run once - safe to re-run (INSERT IGNORE).
+-- ============================================================
+
+-- Priority 1: Human Resources department — ALL titles become HR Admin
+-- (department_id will be filled by the seed script below — see setup_auth.py)
+-- We use a stored procedure so the insert stays portable without hardcoding IDs.
+
+DROP PROCEDURE IF EXISTS sp_seed_role_rules;
+DELIMITER $$
+CREATE PROCEDURE sp_seed_role_rules()
+BEGIN
+    DECLARE hr_dept_id INT DEFAULT NULL;
+
+    SELECT department_id INTO hr_dept_id
+    FROM   departments
+    WHERE  department_name = 'Human Resources'
+    LIMIT  1;
+
+    -- Clear existing rules so this is idempotent
+    DELETE FROM role_rules;
+
+    -- P1: Entire HR department → HR Admin (cross-dept access)
+    IF hr_dept_id IS NOT NULL THEN
+        INSERT INTO role_rules (title_pattern, department_id, role_name, priority)
+        VALUES ('%', hr_dept_id, 'HR Admin', 1);
+    END IF;
+
+    -- P5: Director titles (any dept) → Department Manager
+    INSERT INTO role_rules (title_pattern, department_id, role_name, priority)
+    VALUES ('%Director%', NULL, 'Department Manager', 5);
+
+    -- P10: Manager titles (any dept) → Department Manager
+    INSERT INTO role_rules (title_pattern, department_id, role_name, priority)
+    VALUES ('%Manager%', NULL, 'Department Manager', 10);
+
+    -- P20: Analyst titles → Analyst (read-only analytics)
+    INSERT INTO role_rules (title_pattern, department_id, role_name, priority)
+    VALUES ('%Analyst%', NULL, 'Analyst', 20);
+
+    -- P20: Controller (Finance) → Analyst
+    INSERT INTO role_rules (title_pattern, department_id, role_name, priority)
+    VALUES ('Controller', NULL, 'Analyst', 20);
+
+    -- P20: Project Coordinator → Analyst (sees bottleneck dashboard)
+    INSERT INTO role_rules (title_pattern, department_id, role_name, priority)
+    VALUES ('Project Coordinator', NULL, 'Analyst', 20);
+
+    -- P99: Catch-all → Employee (Overview + own reviews only)
+    INSERT INTO role_rules (title_pattern, department_id, role_name, priority)
+    VALUES ('%', NULL, 'Employee', 99);
+END$$
+DELIMITER ;
+
+CALL sp_seed_role_rules();
+
 DROP PROCEDURE IF EXISTS sp_close_employee_scd2_version;
 DELIMITER $$
 CREATE PROCEDURE sp_close_employee_scd2_version(
