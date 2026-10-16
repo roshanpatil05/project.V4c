@@ -16,31 +16,39 @@ from __future__ import annotations
 DEPT_JOB_TITLES: dict[str, list[str]] = {
     "Engineering": [
         "Engineering Director",
+        "Engineering Manager",
         "Software Engineer",
+        "Data Engineer",
         "QA Engineer",
         "Junior Software Engineer",
     ],
     "Research & Development": [
         "R&D Director",
+        "Manager",
         "Research Scientist",
         "Research Analyst",
-        "Lab Technician",
+        "Laboratory Technician",
     ],
     "Sales": [
         "Sales Director",
         "Sales Manager",
+        "Account Executive",
         "Sales Executive",
+        "Business Development Rep",
         "Sales Development Representative",
     ],
     "Operations": [
         "Operations Director",
+        "Operations Manager",
         "Operations Analyst",
         "Project Coordinator",
         "Logistics Coordinator",
     ],
     "Finance": [
         "Finance Director",
+        "Finance Manager",
         "Financial Analyst",
+        "Controller",
         "Accountant",
         "Junior Financial Analyst",
     ],
@@ -48,7 +56,30 @@ DEPT_JOB_TITLES: dict[str, list[str]] = {
         "HR Director",
         "HR Manager",
         "HR Business Partner",
+        "HR Generalist",
+        "Talent Partner",
         "HR Coordinator",
+    ],
+    "Marketing": [
+        "Marketing Director",
+        "Brand Manager",
+        "Growth Manager",
+        "Marketing Analyst",
+        "Content Strategist",
+    ],
+    "Customer Success": [
+        "Customer Success Director",
+        "Customer Success Manager",
+        "Account Manager",
+        "Support Engineer",
+        "Customer Support Specialist",
+    ],
+    "Supply Chain": [
+        "Supply Chain Director",
+        "Logistics Manager",
+        "Supply Planner",
+        "Procurement Analyst",
+        "Inventory Specialist",
     ],
 }
 
@@ -61,13 +92,8 @@ ALL_JOB_TITLES: frozenset[str] = frozenset(
 # Department-level page access rules for the "Department Manager" role
 # ---------------------------------------------------------------------------
 
-# Operations and Finance Department Managers can access Project Management.
-# Finance Manager: full edit (create/assign/budget). Finance Analyst: view only.
-# Engineering and R&D managers do not get this page.
-PROJECT_MGMT_DEPTS: frozenset[str] = frozenset({
-    "Operations",
-    "Finance",
-})
+# All Department Managers can access Project Management to create initiatives & assign employees
+PROJECT_MGMT_DEPTS: frozenset[str] = frozenset(DEPT_JOB_TITLES.keys())
 
 # Only HR and Finance Department Managers can access Employee Management.
 EMPLOYEE_MGMT_DEPTS: frozenset[str] = frozenset({

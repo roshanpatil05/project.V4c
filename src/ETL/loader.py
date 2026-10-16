@@ -33,7 +33,7 @@ class DataWarehouseLoader(DatabaseConnection):
 			print("⏳ Loading departments...")
 			self._load_departments(connection, employees["department_name"].unique())
 			
-			if project_path is not None:
+			if project_path is not None and Path(project_path).exists():
 				projects = extractor.extract(project_path)
 				print(f"⏳ Loading {len(projects)} projects...")
 				self._load_oltp_projects(connection, projects)
@@ -41,12 +41,12 @@ class DataWarehouseLoader(DatabaseConnection):
 			print(f"⏳ Loading {len(employees)} employee records...")
 			self._load_oltp_employees(connection, employees)
 			
-			if assignment_path is not None:
+			if assignment_path is not None and Path(assignment_path).exists():
 				assignments = extractor.extract(assignment_path)
 				print(f"⏳ Loading {len(assignments)} project assignments...")
 				self._load_oltp_assignments(connection, assignments)
 				
-			if review_path is not None:
+			if review_path is not None and Path(review_path).exists():
 				reviews = extractor.extract(review_path)
 				print(f"⏳ Loading {len(reviews)} performance reviews...")
 				self._load_oltp_reviews(connection, reviews)

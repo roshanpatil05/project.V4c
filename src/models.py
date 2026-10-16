@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date
 
+from src.exceptions import ValidationError
 from src.validators import (
     validate_comment,
     validate_email,
@@ -30,13 +31,18 @@ class Employee:
     status: str = "active"
 
     def validate(self) -> None:
-        self.first_name = validate_name(self.first_name, "First name")
-        self.last_name  = validate_name(self.last_name,  "Last name")
-        self.email      = validate_email(self.email)
-        self.job_title  = validate_job_title(self.job_title)
-        self.salary     = validate_salary(self.salary)
-        if self.department_id < 1:
-            raise ValueError("Department must be a valid positive ID.")
+        try:
+            self.first_name = validate_name(self.first_name, "First name")
+            self.last_name  = validate_name(self.last_name,  "Last name")
+            self.email      = validate_email(self.email)
+            self.job_title  = validate_job_title(self.job_title)
+            self.salary     = validate_salary(self.salary)
+            if self.department_id < 1:
+                raise ValidationError("Department must be a valid positive ID.")
+        except ValueError as exc:
+            if isinstance(exc, ValidationError):
+                raise
+            raise ValidationError(str(exc)) from exc
 
 
 @dataclass
@@ -50,14 +56,19 @@ class Project:
     status: str = "active"
 
     def validate(self) -> None:
-        self.project_name = validate_project_name(self.project_name)
-        self.status       = validate_project_status(self.status)
-        if self.department_id < 1:
-            raise ValueError("Department must be a valid positive ID.")
-        if self.budget < 0:
-            raise ValueError("Budget cannot be negative.")
-        if self.start_date and self.end_date and self.end_date < self.start_date:
-            raise ValueError("End date cannot be before start date.")
+        try:
+            self.project_name = validate_project_name(self.project_name)
+            self.status       = validate_project_status(self.status)
+            if self.department_id < 1:
+                raise ValidationError("Department must be a valid positive ID.")
+            if self.budget < 0:
+                raise ValidationError("Budget cannot be negative.")
+            if self.start_date and self.end_date and self.end_date < self.start_date:
+                raise ValidationError("End date cannot be before start date.")
+        except ValueError as exc:
+            if isinstance(exc, ValidationError):
+                raise
+            raise ValidationError(str(exc)) from exc
 
 
 @dataclass
@@ -70,8 +81,13 @@ class Review:
     manager_id: int | None = None
 
     def validate(self) -> None:
-        if self.employee_id < 1:
-            raise ValueError("Employee ID must be a positive integer.")
-        self.overall_score = validate_score(self.overall_score)
-        self.rating        = validate_rating(self.rating)
-        self.comments      = validate_comment(self.comments)
+        try:
+            if self.employee_id < 1:
+                raise ValidationError("Employee ID must be a positive integer.")
+            self.overall_score = validate_score(self.overall_score)
+            self.rating        = validate_rating(self.rating)
+            self.comments      = validate_comment(self.comments)
+        except ValueError as exc:
+            if isinstance(exc, ValidationError):
+                raise
+            raise ValidationError(str(exc)) from exc

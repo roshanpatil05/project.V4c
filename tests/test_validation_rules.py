@@ -9,6 +9,7 @@ from src.validators import (
     validate_project_budget_change,
     validate_employee_salary_update,
     validate_project_update_form,
+    validate_password_change,
 )
 
 
@@ -157,6 +158,27 @@ class ValidationRulesTests(unittest.TestCase):
         # Invalid project name with bad characters
         errors = validate_project_update_form("Bad<Project>", 100000.0, 150000.0, "active")
         self.assertIn("contains invalid characters", errors[0])
+
+    def test_password_change_validation(self):
+        # Valid password change
+        errors = validate_password_change("CurrentPass1!", "NewSecretPass2@", "NewSecretPass2@")
+        self.assertEqual(errors, [])
+
+        # Missing fields
+        errors = validate_password_change("", "NewSecretPass2@", "NewSecretPass2@")
+        self.assertIn("All fields are required.", errors)
+
+        # Same current and new password
+        errors = validate_password_change("SamePassword1!", "SamePassword1!", "SamePassword1!")
+        self.assertIn("New password cannot be the same as your current password.", errors)
+
+        # New password too short
+        errors = validate_password_change("OldPassword1!", "short", "short")
+        self.assertIn("New password must be at least 8 characters.", errors)
+
+        # Passwords mismatch
+        errors = validate_password_change("OldPassword1!", "NewPassword123!", "MismatchPass123!")
+        self.assertIn("New passwords do not match.", errors)
 
 
 if __name__ == "__main__":

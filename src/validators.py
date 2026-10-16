@@ -167,9 +167,9 @@ def validate_job_title(value: str, check_whitelist: bool = False) -> str:
 def validate_salary(value: float) -> float:
     """Validate salary is within acceptable bounds."""
     if value < MIN_SALARY:
-        raise ValueError(f"Salary must be at least ${MIN_SALARY:,.0f}.")
+        raise ValueError(f"Salary must be at least ₹{MIN_SALARY:,.0f}.")
     if value > MAX_SALARY:
-        raise ValueError(f"Salary cannot exceed ${MAX_SALARY:,.0f}.")
+        raise ValueError(f"Salary cannot exceed ₹{MAX_SALARY:,.0f}.")
     return value
 
 
@@ -187,8 +187,8 @@ def validate_salary_hike(current_salary: float, new_salary: float) -> float:
             hike_ratio = new_salary / current_salary
             raise ValueError(
                 f"Salary hike cannot exceed 2x the current salary. "
-                f"Current: ${current_salary:,.2f}, New: ${new_salary:,.2f} ({hike_ratio:.2f}x). "
-                f"Maximum allowed salary is ${max_allowed:,.2f}."
+                f"Current: ₹{current_salary:,.2f}, New: ₹{new_salary:,.2f} ({hike_ratio:.2f}x). "
+                f"Maximum allowed salary is ₹{max_allowed:,.2f}."
             )
     return new_salary
 
@@ -227,14 +227,14 @@ def validate_project_budget_change(current_budget: float, new_budget: float) -> 
             mult = new_budget / current_budget
             raise ValueError(
                 f"Project budget increase cannot exceed 2x the current budget. "
-                f"Current: ${current_budget:,.2f}, New: ${new_budget:,.2f} ({mult:.2f}x). "
-                f"Maximum allowed budget is ${max_allowed:,.2f}."
+                f"Current: ₹{current_budget:,.2f}, New: ₹{new_budget:,.2f} ({mult:.2f}x). "
+                f"Maximum allowed budget is ₹{max_allowed:,.2f}."
             )
         if new_budget < min_allowed:
             raise ValueError(
                 f"Project budget decrease cannot exceed 2x (cannot be reduced below 50% of current budget). "
-                f"Current: ${current_budget:,.2f}, New: ${new_budget:,.2f}. "
-                f"Minimum allowed budget is ${min_allowed:,.2f}."
+                f"Current: ₹{current_budget:,.2f}, New: ₹{new_budget:,.2f}. "
+                f"Minimum allowed budget is ₹{min_allowed:,.2f}."
             )
 
     return new_budget
@@ -330,6 +330,25 @@ def validate_employee_form(
     elif password != confirm_password:
         errors.append("Passwords do not match.")
 
+    return errors
+
+
+def validate_password_change(
+    current_password: str,
+    new_password: str,
+    confirm_password: str,
+) -> list[str]:
+    """Run password change validation. Returns list of error messages."""
+    errors: list[str] = []
+    if not current_password or not new_password or not confirm_password:
+        errors.append("All fields are required.")
+        return errors
+    if len(new_password) < 8:
+        errors.append("New password must be at least 8 characters.")
+    if new_password != confirm_password:
+        errors.append("New passwords do not match.")
+    if current_password == new_password:
+        errors.append("New password cannot be the same as your current password.")
     return errors
 
 

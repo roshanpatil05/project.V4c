@@ -126,6 +126,36 @@ def apply_theme() -> None:
         [data-testid="stTabs"] [data-baseweb="tab-highlight"] { background: var(--pink); }
         [data-testid="stMetric"] { background: transparent; }
         [data-testid="stAlert"] { border-radius: 12px; }
+        
+        /* Department selection pills/buttons */
+        div[data-testid="stPills"] { gap: 0.5rem; margin-top: 0.25rem; margin-bottom: 0.5rem; }
+        div[data-testid="stPills"] button {
+            border-radius: 20px !important;
+            padding: 0.45rem 1rem !important;
+            font-weight: 600 !important;
+            font-size: 0.88rem !important;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+            border: 1px solid rgba(255, 255, 255, 0.18) !important;
+            background: rgba(255, 255, 255, 0.07) !important;
+            color: #E2E8F0 !important;
+            cursor: pointer !important;
+        }
+        div[data-testid="stPills"] button:hover {
+            border-color: var(--pink) !important;
+            background: rgba(232, 124, 247, 0.18) !important;
+            color: #FFFFFF !important;
+            transform: translateY(-2px) !important;
+            box-shadow: 0 4px 12px rgba(232, 124, 247, 0.25) !important;
+        }
+        div[data-testid="stPills"] button[aria-pressed="true"],
+        div[data-testid="stPills"] button[aria-checked="true"],
+        div[data-testid="stPills"] button[data-state="active"] {
+            background: linear-gradient(90deg, #E87CF7, #B93A96) !important;
+            color: #FFFFFF !important;
+            border-color: #E87CF7 !important;
+            box-shadow: 0 4px 16px rgba(232, 124, 247, 0.45) !important;
+            font-weight: 700 !important;
+        }
         footer { visibility: hidden; }
         </style>
         """,
